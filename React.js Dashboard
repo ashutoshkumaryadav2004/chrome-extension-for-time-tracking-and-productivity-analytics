@@ -1,0 +1,28 @@
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+function Dashboard() {
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    axios.get("http://localhost:3000/api/activities").then((response) => {
+      setData(response.data);
+    });
+  }, []);
+
+  return (
+    <div>
+      <h1>Productivity Analytics</h1>
+      <ul>
+        {data.map((activity) => (
+          <li key={activity._id}>
+            {activity.url}: {activity.timeSpent} seconds (
+            {activity.isProductive ? "Productive" : "Unproductive"})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default Dashboard;
