@@ -1,0 +1,246 @@
+et urls = {};
+let currentTabInfo = {};
+
+chrome.runtime.onStartup.addListener(() => {
+  saveUrlsToStorage().then(() => {
+    console.log(
+      "Extension loaded during browser startup. AND Urls and currentTabInfo saved "
+    );
+  });
+});
+
+const saveUrlsToStorage = () => {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ urls }, () => {
+      console.log("urls object stored in local storage");
+      resolve(); // Resolve the promise to indicate completion
+    });
+  });
+};
+
+const initializeTab = (url, tabId) => {
+  console.log("initialization for : ", url);
+
+  const newTab = {
+    startTime: Date.now(),
+    totalTime: 0,
+    tabId: tabId,
+  };
+  urls[url] = newTab;
+
+  saveUrlsToStorage().then(() => {
+    console.log("after updating the object ", urls);
+  });
+};
+
+const saveCurrentTabInfo = (currentTabInfo) => {
+  return new Promise((resolve) => {
+    // Store the current tab information
+    chrome.storage.local.set({ currentTabInfo }, () => {
+      console.log("currentTabInfo object stored in local storage");
+      resolve();
+    });
+  });
+};
+
+let activeTabId;
+let activeTabUrl;
+
+const getCurrentTab = () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, ([currentTab]) => {
+    activeTabUrl = currentTab.url;
+    activeTabId = currentTab.id;
+
+    console.log(`URL of active tab: ${activeTabUrl}`);
+    console.log(`ID of active tab: ${activeTabId}`);
+  });
+
+  return activeTabUrl;
+};
+getCurrentTab();
+
+//----------------------------------
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete") {
+    const newTabUrl = tab.url;
+    const newTabId = tab.id;
+
+    console.log("\nTab loaded:", newTabUrl);
+
+    // Check if the new tab URL is not already present in the urls object
+    if (!urls || !urls[newTabUrl]) {
+      console.log("\n\nNew tab created and not existing:\nURL:", tab, "\n\n");
+      initializeTab(newTabUrl, newTabId);
+
+      const currentTabInfo = {
+        url: newTabUrl,
+        tabId: newTabId,
+        startTime: Date.now(),
+      };
+
+      saveCurrentTabInfo(currentTabInfo).then(()=>{
+        console.log("New tab entered and CurrentInfoObj Updated") ;
+      })
+     
+    }
+  }
+});
+
+
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  // chrome.tabs.sendMessage(activeInfo.tabId, { action: "tabSwitched" });
+  console.log("Tab Switched");
+
+  const activeTabId = activeInfo.tabId;
+
+  // Retrieve the information of the previously active tab
+  chrome.storage.local.get(["currentTabInfo"], (result) => {
+    const previousTabInfo = result.currentTabInfo;
+
+    if (previousTabInfo) {
+      console.log("Fetched Info : \n", previousTabInfo);
+      const prevTabId = previousTabInfo.tabId;
+      const prevTabUrl = previousTabInfo.url;
+
+      // Update the time spent for the previous tab
+      chrome.storage.local.get(["urls"], (result) => {
+        urls = result.urls;
+
+        console.log("checking if the tab alr exits : ", urls);
+
+        if (!urls || !urls[prevTabUrl]) {
+          // dikkat isi line mein h :
+          console.log("new tab found");
+          console.log("And current URLs object : ", urls);
+          initializeTab(prevTabUrl, prevTabId);
+        }
+
+        const timeSpent = Date.now() - previousTabInfo.startTime;
+        urls[prevTabUrl].totalTime += timeSpent;
+        urls[prevTabUrl].startTime = Date.now();
+
+        saveUrlsToStorage().then(() => {
+          console.log("Urls saved after updating for existing tab");
+        });
+      });
+    }
+  });
+
+  // Get information about the currently active tab
+  chrome.tabs.get(activeTabId, (activeTab) => {
+    const currentTabInfo = {
+      url: activeTab.url,
+      tabId: activeTabId,
+      startTime: Date.now(),
+    };
+
+    // Store the current tab information
+    saveCurrentTabInfo(currentTabInfo).then(()=>{
+      console.log("New tab entered and CurrentInfoObj Updated") ;
+    })
+  });
+});
+
+// chrome.runtime.onMessage.addListener((message) => {
+//     if (message.action === "tabSwitched") {
+//       alert("Tab switched!");
+//     }
+//   }); 
+
+//   chrome.runtime.onMessage.addListener((message) => {
+//     if (message.action === "newTab") {
+//       alert("New Tab !");
+//     }
+//   }); 
+
+  {
+    "manifest_version": 3,
+    "name": "URL Tracker - 2",
+    "version": "1.0",
+    "permissions": [
+      "tabs",
+      "activeTab",
+      "scripting",
+      "storage",
+      "background"
+    ],
+    "background": {
+      "service_worker": "background.js"    
+    },
+    "content_scripts": [
+        {
+          "matches": ["<all_urls>"],
+          "js": ["content-script.js"]
+        }
+      ]
+    ,
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "icons": {
+      "128": "icon.png"
+    }
+  }
+  <!DOCTYPE html>
+<html>
+<head>
+  <title>Tab Time Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f8f8f8;
+    }
+    #container {
+      max-width: 300px;
+      overflow-x: scroll;
+      margin: 20px auto;
+      padding: 0px 20px;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      border-radius: 5px;
+    }
+    h1 {
+      font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #06afe7;
+      text-align: center;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin-bottom: 10px;
+      color: #555;
+      font-size: 14px;
+      border-bottom: 1px solid #ccc;
+      padding: 10px 0;
+    }
+    li strong {
+      color: #333;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>Tab Time Tracker</h1>
+    <ul id="urlList"></ul>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+chrome.storage.local.get(["urls"], (result) => {
+  const storedUrls = result.urls;
+  const urlList = document.getElementById("urlList");
+
+  for (const url in storedUrls) {
+    const urlInfo = storedUrls[url];
+    const li = document.createElement("li");
+    li.className = "list-group-item";
+    li.innerHTML = `<strong>${url}</strong> - Total Time: ${urlInfo.totalTime / 1000} sec`;
+    urlList.appendChild(li);
+  }
+});
